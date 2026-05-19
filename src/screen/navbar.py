@@ -6,7 +6,7 @@ FONT_HEADER_BY = (FONT_FAMILY, 11, "normal")
 FONT_HEADER_GRP = (FONT_FAMILY, 15, "bold")
 
 class TopNavbar(ctk.CTkFrame):
-    def __init__(self, parent, switch_callback, logo_img, icon_scan, icon_member):
+    def __init__(self, parent, switch_callback, logo_img, icon_scan, icon_member, icon_report=None):
         super().__init__(parent, height=55, corner_radius=0, fg_color=("gray85", "#1e1e1e"))
         self.switch_callback = switch_callback
         
@@ -53,6 +53,15 @@ class TopNavbar(ctk.CTkFrame):
         )
         self.btn_dashboard.grid(row=0, column=0, padx=(0, 5))
 
+        # Tombol Report (Menggunakan icon_report)
+        self.btn_report = ctk.CTkButton(
+            tab_container, text=" Analysis Report", font=(FONT_FAMILY, 13, "bold"),
+            image=icon_report, compound="left",
+            fg_color=self.inactive_bg, text_color=self.inactive_text, hover_color=("gray70", "#2d2d2d"),
+            corner_radius=8, height=35, command=lambda: self.on_tab_click("report")
+        )
+        self.btn_report.grid(row=0, column=1, padx=5)
+
         # Tombol Kelompok (Menggunakan icon_member)
         self.btn_group = ctk.CTkButton(
             tab_container, text=" Anggota Kelompok", font=(FONT_FAMILY, 13, "bold"),
@@ -60,14 +69,20 @@ class TopNavbar(ctk.CTkFrame):
             fg_color=self.inactive_bg, text_color=self.inactive_text, hover_color=("gray70", "#2d2d2d"),
             corner_radius=8, height=35, command=lambda: self.on_tab_click("group")
         )
-        self.btn_group.grid(row=0, column=1, padx=5)
+        self.btn_group.grid(row=0, column=2, padx=5)
 
     def on_tab_click(self, page_name):
+        # Reset semua tab
+        all_btns = [self.btn_dashboard, self.btn_report, self.btn_group]
+        for btn in all_btns:
+            btn.configure(fg_color=self.inactive_bg, text_color=self.inactive_text)
+
+        # Aktifkan tab yang dipilih
         if page_name == "dashboard":
             self.btn_dashboard.configure(fg_color=self.active_bg, text_color=self.active_text)
-            self.btn_group.configure(fg_color=self.inactive_bg, text_color=self.inactive_text)
+        elif page_name == "report":
+            self.btn_report.configure(fg_color=self.active_bg, text_color=self.active_text)
         elif page_name == "group":
             self.btn_group.configure(fg_color=self.active_bg, text_color=self.active_text)
-            self.btn_dashboard.configure(fg_color=self.inactive_bg, text_color=self.inactive_text)
         
         self.switch_callback(page_name)

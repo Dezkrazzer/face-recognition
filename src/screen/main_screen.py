@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import threading
+from datetime import datetime
 import customtkinter as ctk
 import tkinter as tk
 from tkinter import filedialog, messagebox
@@ -16,6 +17,7 @@ except ImportError:
 
 from .splash_screen import SplashScreen
 from .group_screen import GroupScreen
+from .report_screen import ReportScreen
 from .navbar import TopNavbar 
 
 ctk.set_appearance_mode("System")  
@@ -130,7 +132,8 @@ class FaceRecognitionApp(ctk.CTk):
             switch_callback=self.switch_page, 
             logo_img=self.icons.get("logo_uns"),
             icon_scan=self.icons.get("scan"),
-            icon_member=self.icons.get("member")
+            icon_member=self.icons.get("member"),
+            icon_report=self.icons.get("stats")
         )
         self.top_navbar.grid(row=0, column=0, sticky="ew")
 
@@ -240,7 +243,11 @@ class FaceRecognitionApp(ctk.CTk):
         self.log_box = ctk.CTkTextbox(self.main_frame, height=150, corner_radius=10, border_width=1, border_color=("gray75", "gray25"), state="disabled", font=FONT_LOG)
         self.log_box.grid(row=4, column=0, columnspan=2, sticky="nsew", pady=(0, 10))
 
-        # ---------------- PAGE 2: GROUP SCREEN FRAME ----------------
+        # ---------------- PAGE 2: REPORT SCREEN FRAME ----------------
+        self.page_report = ReportScreen(self.content_container)
+        self.page_report.grid(row=0, column=0, sticky="nsew")
+
+        # ---------------- PAGE 3: GROUP SCREEN FRAME ----------------
         self.page_group = GroupScreen(self.content_container)
         self.page_group.grid(row=0, column=0, sticky="nsew")
 
@@ -249,6 +256,8 @@ class FaceRecognitionApp(ctk.CTk):
     def switch_page(self, page_name):
         if page_name == "dashboard":
             self.page_dashboard.tkraise()
+        elif page_name == "report":
+            self.page_report.tkraise()
         elif page_name == "group":
             self.page_group.tkraise()
 
@@ -306,8 +315,41 @@ class FaceRecognitionApp(ctk.CTk):
         self.log_box.configure(state="disabled")
         threading.Thread(target=self.run_recognition, daemon=True).start()
 
+    def _collect_system_snapshot(self):
+        """Mengambil snapshot performa sistem saat ini."""
+        snap = {
+            "time": time.time(),
+            "cpu": psutil.cpu_percent(interval=0),
+            "ram": psutil.virtual_memory().percent,
+            "gpu_load": -1,
+            "gpu_vram": -1,
+        }
+        if GPU_AVAILABLE:
+            try:
+                gpus = GPUtil.getGPUs()
+                if gpus:
+                    snap["gpu_load"] = gpus[0].load * 100
+                    snap["gpu_vram"] = gpus[0].memoryUtil * 100
+            except Exception:
+                pass
+        return snap
+
+    def _monitor_system(self, snapshots, stop_event):
+        """Background thread: kumpulkan snapshot performa setiap 0.5 detik."""
+        while not stop_event.is_set():
+            snapshots.append(self._collect_system_snapshot())
+            stop_event.wait(0.5)
+
     def run_recognition(self):
         start_time = time.time()
+        
+        # Mulai monitoring sistem
+        system_snapshots = []
+        stop_monitor = threading.Event()
+        monitor_thread = threading.Thread(
+            target=self._monitor_system, args=(system_snapshots, stop_monitor), daemon=True
+        )
+        monitor_thread.start()
         
         try:
             THRESHOLD = float(self.entry_threshold.get())
@@ -325,11 +367,14 @@ class FaceRecognitionApp(ctk.CTk):
         print(f"Ambang Toleransi (Threshold): {THRESHOLD}")
         print(f"Maks Komponen Eigen         : {NUM_COMPONENTS}\n")
 
+        model_from_cache = self.recognizer.is_loaded
+
         # 1. LOAD ATAU BUILD PORTABLE MODEL
         if not self.recognizer.is_loaded:
             if not os.path.exists(self.model_path):
                 if not self.dataset_folder:
                     print("ERROR: File .pt tidak ditemukan dan Folder Dataset belum dipilih!")
+                    stop_monitor.set()
                     self.after(0, self.show_error, "Silakan pilih Folder Dataset terlebih dahulu untuk kompilasi model!")
                     return
                     
@@ -338,6 +383,7 @@ class FaceRecognitionApp(ctk.CTk):
                     self.recognizer.build_dataset(self.dataset_folder, num_components=NUM_COMPONENTS)
                 except Exception as e:
                     print(f"ERROR: {e}")
+                    stop_monitor.set()
                     self.after(0, self.show_error, "Gagal mengkompilasi dataset.")
                     return
             
@@ -346,6 +392,7 @@ class FaceRecognitionApp(ctk.CTk):
                 self.recognizer.load_model()
             except Exception as e:
                 print(f"ERROR: {e}")
+                stop_monitor.set()
                 self.after(0, self.show_error, "Gagal memuat model .pt")
                 return
         else:
@@ -366,9 +413,45 @@ class FaceRecognitionApp(ctk.CTk):
         end_time = time.time()
         exec_time = end_time - start_time
         
-        self.after(0, self.show_final_result, min_dist, THRESHOLD, closest_img_rgb, label, msg, exec_time)
+        # Hentikan monitoring dan ambil snapshot terakhir
+        stop_monitor.set()
+        system_snapshots.append(self._collect_system_snapshot())
+        
+        # Hitung info dataset
+        dataset_total_images = len(self.recognizer.dataset_labels) if self.recognizer.is_loaded else 0
+        dataset_total_classes = len(set(self.recognizer.dataset_labels)) if self.recognizer.is_loaded else 0
+        
+        # Hitung match percentage
+        match_pct = None
+        if msg == "Cocok":
+            match_pct = max(0.0, 100.0 * (1 - (min_dist / THRESHOLD)))
+        
+        # Tentukan device
+        import torch
+        device_name = "CUDA" if torch.cuda.is_available() else "CPU"
+        
+        # Kumpulkan report data
+        report_data = {
+            "timestamp": datetime.now().strftime("%d %B %Y, %H:%M:%S"),
+            "threshold": THRESHOLD,
+            "num_components": NUM_COMPONENTS,
+            "execution_time": exec_time,
+            "result_label": label,
+            "result_status": msg,
+            "min_distance": min_dist,
+            "match_percentage": match_pct,
+            "test_image_path": self.test_image_path,
+            "dataset_folder": self.dataset_folder,
+            "dataset_total_images": dataset_total_images,
+            "dataset_total_classes": dataset_total_classes,
+            "model_loaded_from_cache": model_from_cache,
+            "device": device_name,
+            "system_snapshots": system_snapshots,
+        }
+        
+        self.after(0, self.show_final_result, min_dist, THRESHOLD, closest_img_rgb, label, msg, exec_time, report_data)
 
-    def show_final_result(self, min_dist, threshold, closest_img_rgb, label, msg, exec_time):
+    def show_final_result(self, min_dist, threshold, closest_img_rgb, label, msg, exec_time, report_data=None):
         self.lbl_time.configure(text=f"Execution Time: {exec_time:.2f}s")
         
         if msg == "Cocok":
@@ -386,6 +469,12 @@ class FaceRecognitionApp(ctk.CTk):
             
         print("=== ANALISIS DIAGNOSTIK SELESAI ===")
         self.btn_analyze.configure(state="normal", fg_color="#10b981")
+        
+        # Update Report Screen dan pindah ke tab report
+        if report_data:
+            self.page_report.update_report(report_data)
+            self.switch_page("report")
+            self.top_navbar.on_tab_click("report")
 
     def show_error(self, msg):
         self.lbl_result.configure(text="SYSTEM ERROR", text_color="#ef4444")

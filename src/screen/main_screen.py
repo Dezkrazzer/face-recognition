@@ -1,13 +1,11 @@
-# src/screen/main_screen.py
 import os
 import sys
 import time
 import threading
 import customtkinter as ctk
-from tkinter import filedialog, messagebox
 import tkinter as tk
-from PIL import Image, ImageTk
-import numpy as np
+from tkinter import filedialog, messagebox
+from PIL import Image
 import psutil
 
 try:
@@ -16,10 +14,9 @@ try:
 except ImportError:
     GPU_AVAILABLE = False
 
-from utils.eigen import calculate_manual_eigen, manual_euclidean_distance
-from screen.splash_screen import SplashScreen
-from screen.group_screen import GroupScreen
-from screen.navbar import TopNavbar 
+from .splash_screen import SplashScreen
+from .group_screen import GroupScreen
+from .navbar import TopNavbar 
 
 ctk.set_appearance_mode("System")  
 ctk.set_default_color_theme("blue") 
@@ -32,6 +29,9 @@ FONT_BODY = (FONT_FAMILY, 13, "normal")
 FONT_STATS = (FONT_FAMILY, 12, "bold")
 FONT_LOG = ("Consolas", 11, "normal")
 
+# ==========================================
+# THREAD SAFE CONSOLE UNTUK LOG UI
+# ==========================================
 class ThreadSafeConsole:
     def __init__(self, textbox, app):
         self.textbox = textbox
@@ -49,16 +49,29 @@ class ThreadSafeConsole:
 
     def flush(self): pass
 
+
+# ==========================================
+# MAIN APPLICATION GUI
+# ==========================================
 class FaceRecognitionApp(ctk.CTk):
-    def __init__(self):
+    def __init__(self, recognizer):
         super().__init__()
         self.withdraw()
+        
+        # Menerima injeksi logika AI dari main.py
+        self.recognizer = recognizer
         
         self.title("Face Recognition App - Kelompok 7 - Informatika 2025D")
         self.geometry("1150x750") 
         
+        # --- PERBAIKAN PATH (URUTANNYA HARUS SEPERTI INI) ---
+        # 1. Definisikan dulu lokasi folder saat ini (folder 'screen')
         self.current_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        # 2. Baru gunakan variabel di atas untuk mencari folder 'assets' dan checkpoint model di 'src/dataset'
         self.assets_dir = os.path.join(self.current_dir, "..", "assets")
+        self.model_path = os.path.join(self.current_dir, "..", "dataset", "eigen_weights.pt")
+        # ----------------------------------------------------
         
         try:
             ico_path = os.path.join(self.assets_dir, "logo_uns.ico")
@@ -73,7 +86,8 @@ class FaceRecognitionApp(ctk.CTk):
 
         self.dataset_folder = ""
         self.test_image_path = ""
-        self.IMG_SIZE = (64, 64)
+        self.test_preview_image = None
+        self.result_preview_image = None
 
         self.init_icons()
         self.setup_ui()
@@ -82,7 +96,6 @@ class FaceRecognitionApp(ctk.CTk):
         
         SplashScreen(self)
         self.update_hardware_stats()
-
     def init_icons(self):
         self.icons = {}
         icon_files = {
@@ -144,33 +157,30 @@ class FaceRecognitionApp(ctk.CTk):
         self.btn_dataset = ctk.CTkButton(self.sidebar, text="  Choose Folder", font=FONT_BODY, image=self.icons["folder"], compound="left", height=38, corner_radius=8)
         self.btn_dataset.configure(command=self.load_dataset)
         self.btn_dataset.grid(row=1, column=0, padx=25, pady=(0, 5), sticky="ew")
-        self.lbl_dataset_status = ctk.CTkLabel(self.sidebar, text="No Folder Chosen", font=FONT_BODY, text_color="gray")
+        self.lbl_dataset_status = ctk.CTkLabel(self.sidebar, text="No Folder Chosen", font=FONT_BODY, text_color="gray", width=250, anchor="w")
         self.lbl_dataset_status.grid(row=2, column=0, padx=25, pady=(0, 20), sticky="w")
 
         ctk.CTkLabel(self.sidebar, text="2. Target Image", font=FONT_SECTION).grid(row=3, column=0, padx=25, pady=(0, 10), sticky="w")
         self.btn_image = ctk.CTkButton(self.sidebar, text="  Choose File", font=FONT_BODY, image=self.icons["image"], compound="left", height=38, corner_radius=8)
         self.btn_image.configure(command=self.load_test_image)
         self.btn_image.grid(row=4, column=0, padx=25, pady=(0, 5), sticky="ew")
-        self.lbl_image_status = ctk.CTkLabel(self.sidebar, text="No File Chosen", font=FONT_BODY, text_color="gray")
+        self.lbl_image_status = ctk.CTkLabel(self.sidebar, text="No File Chosen", font=FONT_BODY, text_color="gray", width=250, anchor="w")
         self.lbl_image_status.grid(row=5, column=0, padx=25, pady=(0, 20), sticky="w")
 
-        # 3. Settings Section (DIPERBARUI)
         ctk.CTkLabel(self.sidebar, text="3. Analysis Settings", font=FONT_SECTION).grid(row=6, column=0, padx=25, pady=(0, 10), sticky="w")
         self.frame_settings = ctk.CTkFrame(self.sidebar, fg_color="transparent")
         self.frame_settings.grid(row=7, column=0, padx=25, pady=(0, 20), sticky="ew")
         self.frame_settings.grid_columnconfigure(0, weight=1)
         
-        # --- Input Threshold ---
         ctk.CTkLabel(self.frame_settings, text="Tolerance Threshold:", font=FONT_BODY).grid(row=0, column=0, sticky="w", pady=(0, 8))
         self.entry_threshold = ctk.CTkEntry(self.frame_settings, width=70, font=FONT_BODY, justify="center", height=28, corner_radius=6)
         self.entry_threshold.grid(row=0, column=1, sticky="e", pady=(0, 8))
-        self.entry_threshold.insert(0, "4500.0") 
+        self.entry_threshold.insert(0, "3000.0") 
         
-        # --- Input Jumlah Komponen Eigen ---
         ctk.CTkLabel(self.frame_settings, text="Eigen Components:", font=FONT_BODY).grid(row=1, column=0, sticky="w")
         self.entry_components = ctk.CTkEntry(self.frame_settings, width=70, font=FONT_BODY, justify="center", height=28, corner_radius=6)
         self.entry_components.grid(row=1, column=1, sticky="e")
-        self.entry_components.insert(0, "50") # Default adalah 50 komponen
+        self.entry_components.insert(0, "50") 
 
         self.btn_analyze = ctk.CTkButton(
             self.sidebar, text="  START ANALYZE", font=(FONT_FAMILY, 15, "bold"), image=self.icons["analyze"], 
@@ -257,24 +267,33 @@ class FaceRecognitionApp(ctk.CTk):
         self.after(1000, self.update_hardware_stats)
 
     def check_ready_to_analyze(self):
-        if self.dataset_folder and self.test_image_path:
+        if self.test_image_path:
             self.btn_analyze.configure(state="normal", fg_color="#10b981")
+
+    def _shorten_filename(self, path, max_chars=28):
+        name = os.path.basename(path)
+        if len(name) <= max_chars:
+            return name
+        return name[: max_chars - 3] + "..."
 
     def load_dataset(self):
         folder_selected = filedialog.askdirectory()
         if folder_selected:
             self.dataset_folder = folder_selected
-            self.lbl_dataset_status.configure(text=os.path.basename(folder_selected))
+            self.lbl_dataset_status.configure(text=self._shorten_filename(folder_selected))
             self.check_ready_to_analyze()
 
     def load_test_image(self):
         file_selected = filedialog.askopenfilename(filetypes=[("Image Files", "*.jpg *.jpeg *.png")])
         if file_selected:
             self.test_image_path = file_selected
-            self.lbl_image_status.configure(text=os.path.basename(file_selected))
+            self.lbl_image_status.configure(text=self._shorten_filename(file_selected))
             img = Image.open(self.test_image_path)
-            ctk_img = ctk.CTkImage(light_image=img, dark_image=img, size=(200, 200))
-            self.canvas_test.configure(image=ctk_img, text="")
+            w, h = img.size
+            s = min(w, h)
+            img = img.crop(((w-s)//2, (h-s)//2, (w+s)//2, (h+s)//2))
+            self.test_preview_image = ctk.CTkImage(light_image=img, dark_image=img, size=(200, 200))
+            self.canvas_test.configure(image=self.test_preview_image, text="")
             self.check_ready_to_analyze()
 
     def start_analysis_thread(self):
@@ -290,121 +309,86 @@ class FaceRecognitionApp(ctk.CTk):
     def run_recognition(self):
         start_time = time.time()
         
-        # --- AMBIL NILAI THRESHOLD ---
         try:
             THRESHOLD = float(self.entry_threshold.get())
         except ValueError:
-            print("⚠️ Input Threshold tidak valid! Menggunakan default: 4500.0")
-            THRESHOLD = 4500.0
-            self.after(0, lambda: self.entry_threshold.delete(0, tk.END))
-            self.after(0, lambda: self.entry_threshold.insert(0, "4500.0"))
+            print("⚠️ Input Threshold tidak valid! Menggunakan default: 3000.0")
+            THRESHOLD = 3000.0
             
-        # --- AMBIL NILAI JUMLAH KOMPONEN EIGEN ---
         try:
             NUM_COMPONENTS = int(self.entry_components.get())
-            if NUM_COMPONENTS <= 0: raise ValueError
         except ValueError:
             print("⚠️ Input Komponen Eigen tidak valid! Menggunakan default: 50")
             NUM_COMPONENTS = 50
-            self.after(0, lambda: self.entry_components.delete(0, tk.END))
-            self.after(0, lambda: self.entry_components.insert(0, "50"))
             
         print("=== MEMULAI ANALISIS RUANG VEKTOR EIGEN ===")
-        print(f"Path Dataset : {os.path.basename(self.dataset_folder)}")
-        print(f"Citra Target : {os.path.basename(self.test_image_path)}")
-        print(f"Batas Ambang : {THRESHOLD}")
-        print(f"Maks Eigen   : {NUM_COMPONENTS}\n")
+        print(f"Ambang Toleransi (Threshold): {THRESHOLD}")
+        print(f"Maks Komponen Eigen         : {NUM_COMPONENTS}\n")
 
-        self.progress_bar.set(0.1)
-        print("[1/4] Memuat matriks citra pelatihan...")
-        X_train, self.y_train, self.X_train_images = [], [], []
-        MAX_IMAGES = 150
-        loaded_count = 0
-
-        for root_dir, dirs, files in os.walk(self.dataset_folder):
-            for filename in files:
-                if loaded_count >= MAX_IMAGES: break
-                if filename.lower().endswith(('.png', '.jpg', '.jpeg')):
-                    label = os.path.basename(root_dir).replace("pins_", "")
-                    img_path = os.path.join(root_dir, filename)
-                    try:
-                        img = Image.open(img_path).convert('L').resize(self.IMG_SIZE)
-                        X_train.append(np.array(img).flatten())
-                        self.y_train.append(label)
-                        self.X_train_images.append(img_path)
-                        loaded_count += 1
-                    except Exception:
-                        pass
-            if loaded_count >= MAX_IMAGES: break
-
-        X_train = np.array(X_train)
-        if len(X_train) == 0:
-            print("ERROR: Repositori Gambar Kosong!")
-            self.lbl_result.configure(text="Error: Dataset Empty", text_color="#ef4444")
-            self.after(0, lambda: self.btn_analyze.configure(state="normal", fg_color="#10b981"))
-            return
-
-        self.progress_bar.set(0.3)
-        print(f"[2/4] Centering data & membentuk Matriks Kovarians (n={len(X_train)})...")
-        self.mean_face = np.mean(X_train, axis=0)
-        X_centered = X_train - self.mean_face 
-        covariance_matrix = np.dot(X_centered, X_centered.T)
-
-        self.progress_bar.set(0.5)
-        print("[3/4] Ekstraksi Eigenface via Power Iteration (Algoritma Manual)...")
-        
-        # --- GUNAKAN NILAI DARI INPUT GUI ---
-        k_components = min(NUM_COMPONENTS, len(X_train)) 
-        
-        eigenvalues, eigenvectors_small = calculate_manual_eigen(covariance_matrix, k_components)
-
-        eigenvectors = np.dot(X_centered.T, eigenvectors_small)
-        eigenvectors = eigenvectors / np.linalg.norm(eigenvectors, axis=0)
-        self.eigenfaces = eigenvectors
-        self.weights_train = np.dot(X_centered, self.eigenfaces)
-
+        # 1. LOAD ATAU BUILD PORTABLE MODEL
+        if not self.recognizer.is_loaded:
+            if not os.path.exists(self.model_path):
+                if not self.dataset_folder:
+                    print("ERROR: File .pt tidak ditemukan dan Folder Dataset belum dipilih!")
+                    self.after(0, self.show_error, "Silakan pilih Folder Dataset terlebih dahulu untuk kompilasi model!")
+                    return
+                    
+                self.progress_bar.set(0.2)
+                try:
+                    self.recognizer.build_dataset(self.dataset_folder, num_components=NUM_COMPONENTS)
+                except Exception as e:
+                    print(f"ERROR: {e}")
+                    self.after(0, self.show_error, "Gagal mengkompilasi dataset.")
+                    return
+            
+            self.progress_bar.set(0.6)
+            try:
+                self.recognizer.load_model()
+            except Exception as e:
+                print(f"ERROR: {e}")
+                self.after(0, self.show_error, "Gagal memuat model .pt")
+                return
+        else:
+            print("[INFO] Model Portable sudah tersimpan di VRAM. Eksekusi instan.")
+            
         self.progress_bar.set(0.8)
-        print("\n[4/4] Pengukuran Proyeksi Jarak Euclidean Citra Uji...")
-        test_img = Image.open(self.test_image_path).convert('L').resize(self.IMG_SIZE)
-        weight_test = np.dot(np.array(test_img).flatten() - self.mean_face, self.eigenfaces) 
-
-        min_dist = float('inf')
-        best_match_idx = -1
-
-        for i in range(len(self.weights_train)):
-            dist = manual_euclidean_distance(self.weights_train[i], weight_test)
-            if dist < min_dist:
-                min_dist = dist
-                best_match_idx = i
-
+        print("\n[PROSES] Melakukan deteksi Haar Cascade & Ekstraksi Fitur Uji...")
+        
+        # 2. INFERENCE
+        closest_img_rgb, label, min_dist, msg = self.recognizer.recognize(self.test_image_path, THRESHOLD)
+        
         self.progress_bar.set(1.0)
         print("-" * 45)
-        print(f"📐 JARAK EUCLIDEAN TERKECIL : {min_dist:.2f}")
-        print(f"🔒 AMBANG TOLERANSI (GUI)   : {THRESHOLD}")
+        if min_dist != float('inf'):
+            print(f"📐 JARAK EUCLIDEAN TERKECIL : {min_dist:.2f}")
         print("-" * 45)
 
         end_time = time.time()
         exec_time = end_time - start_time
         
-        self.after(0, self.show_final_result, min_dist, THRESHOLD, best_match_idx, exec_time)
+        self.after(0, self.show_final_result, min_dist, THRESHOLD, closest_img_rgb, label, msg, exec_time)
 
-    def show_final_result(self, min_dist, threshold, best_match_idx, exec_time):
+    def show_final_result(self, min_dist, threshold, closest_img_rgb, label, msg, exec_time):
         self.lbl_time.configure(text=f"Execution Time: {exec_time:.2f}s")
-        if min_dist <= threshold:
-            predicted_label = self.y_train[best_match_idx]
-            best_img_path = self.X_train_images[best_match_idx]
+        
+        if msg == "Cocok":
             match_percentage = max(0.0, 100.0 * (1 - (min_dist / threshold)))
+            print(f"✅ KESIMPULAN KERNEL: Pola cocok dengan individual '{label}' ({match_percentage:.1f}%)")
+            self.lbl_result.configure(text=f"MATCH FOUND: {label.upper()} ({match_percentage:.1f}% Cocok)", text_color="#10b981")
             
-            print(f"✅ KESIMPULAN KERNEL: Pola cocok dengan individual '{predicted_label}' ({match_percentage:.1f}%)")
-            self.lbl_result.configure(text=f"MATCH FOUND: {predicted_label.upper()} ({match_percentage:.1f}% Cocok)", text_color="#10b981")
-            
-            res_img = Image.open(best_img_path)
-            ctk_res_img = ctk.CTkImage(light_image=res_img, dark_image=res_img, size=(200, 200))
-            self.canvas_result.configure(image=ctk_res_img, text="")
+            res_img = Image.fromarray(closest_img_rgb)
+            self.result_preview_image = ctk.CTkImage(light_image=res_img, dark_image=res_img, size=(200, 200))
+            self.canvas_result.configure(image=self.result_preview_image, text="")
         else:
-            print("❌ KESIMPULAN KERNEL: Nilai di luar batas toleransi (Wajah Asing)")
-            self.lbl_result.configure(text="UNKNOWN (NO RESULT)", text_color="#ef4444")
+            print(f"❌ KESIMPULAN KERNEL: {msg}")
+            self.lbl_result.configure(text="UNKNOWN (NO MATCH)", text_color="#ef4444")
             self.canvas_result.configure(image="", text="(No Match Found)")
             
         print("=== ANALISIS DIAGNOSTIK SELESAI ===")
         self.btn_analyze.configure(state="normal", fg_color="#10b981")
+
+    def show_error(self, msg):
+        self.lbl_result.configure(text="SYSTEM ERROR", text_color="#ef4444")
+        self.canvas_result.configure(image="", text="Error")
+        self.btn_analyze.configure(state="normal", fg_color="#10b981")
+        messagebox.showerror("Error", msg)

@@ -370,36 +370,17 @@ class FaceRecognitionApp(ctk.CTk):
         model_from_cache = self.recognizer.is_loaded
 
         # 1. LOAD ATAU BUILD PORTABLE MODEL
+# 1. LOAD PORTABLE MODEL (VERSI SHARDING)
         if not self.recognizer.is_loaded:
-            if not os.path.exists(self.model_path):
-                if not self.dataset_folder:
-                    print("ERROR: File .pt tidak ditemukan dan Folder Dataset belum dipilih!")
-                    stop_monitor.set()
-                    self.after(0, self.show_error, "Silakan pilih Folder Dataset terlebih dahulu untuk kompilasi model!")
-                    return
-                    
-                self.progress_bar.set(0.2)
-                try:
-                    self.recognizer.build_dataset(self.dataset_folder, num_components=NUM_COMPONENTS)
-                except Exception as e:
-                    print(f"ERROR: {e}")
-                    stop_monitor.set()
-                    self.after(0, self.show_error, "Gagal mengkompilasi dataset.")
-                    return
-            
-            self.progress_bar.set(0.6)
+            self.progress_bar.set(0.5)
             try:
                 self.recognizer.load_model()
             except Exception as e:
                 print(f"ERROR: {e}")
-                stop_monitor.set()
-                self.after(0, self.show_error, "Gagal memuat model .pt")
+                self.after(0, self.show_error, "Model tidak ditemukan! Jalankan 'python build_model.py' di terminal terlebih dahulu.")
                 return
         else:
             print("[INFO] Model Portable sudah tersimpan di VRAM. Eksekusi instan.")
-            
-        self.progress_bar.set(0.8)
-        print("\n[PROSES] Melakukan deteksi Haar Cascade & Ekstraksi Fitur Uji...")
         
         # 2. INFERENCE
         closest_img_rgb, label, min_dist, msg = self.recognizer.recognize(self.test_image_path, THRESHOLD)

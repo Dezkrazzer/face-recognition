@@ -18,6 +18,22 @@
 
 ---
 
+## 📑 Table of Contents
+
+- [📖 Deskripsi Proyek](#-deskripsi-proyek)
+- [🏗️ Arsitektur Proyek](#️-arsitektur-proyek)
+- [⚙️ Cara Kerja Sistem](#️-cara-kerja-sistem)
+- [📐 Rumus Aljabar Linier yang Digunakan](#-rumus-aljabar-linier-yang-digunakan)
+- [🚀 Instalasi & Menjalankan](#-instalasi--menjalankan)
+- [📘 Panduan Penggunaan](#-panduan-penggunaan)
+- [🖼️ Tampilan Antarmuka](#️-tampilan-antarmuka)
+- [🔧 Detail Teknis](#-detail-teknis)
+- [📂 Dataset](#-dataset)
+- [📄 Lisensi](#-lisensi)
+- [👥 Anggota Kelompok](#-anggota-kelompok)
+
+---
+
 ## 📖 Deskripsi Proyek
 
 Aplikasi **Face Recognition** berbasis metode **Eigenface** yang dibangun menggunakan Python. Program ini mampu mengenali wajah seseorang dari gambar input dengan mencocokkannya terhadap dataset wajah yang telah dilatih sebelumnya. Seluruh komputasi aljabar linear (PCA, proyeksi eigenspace, dan pencocokan jarak Euclidean) diakselerasi menggunakan **PyTorch** sehingga mendukung eksekusi di **GPU (CUDA)** maupun **CPU**.
@@ -223,6 +239,102 @@ Aplikasi memiliki **3 halaman utama** yang dapat diakses melalui navigasi atas:
 | 🔬 **Analysis Dashboard** | Dashboard utama untuk memuat gambar, mengatur parameter, dan menjalankan analisis pengenalan wajah. |
 | 📊 **Analysis Report**    | Laporan lengkap hasil analisis terakhir, termasuk metrik performa, jarak Euclidean, confidence, serta statistik penggunaan hardware. |
 | 👥 **Anggota Kelompok**   | Profil anggota kelompok dengan foto dan informasi akademik.               |
+
+---
+
+## 📐 Rumus Aljabar Linier yang Digunakan
+
+Berikut adalah rumus-rumus aljabar linier yang mendasari seluruh proses pengenalan wajah menggunakan metode **Eigenface** dalam proyek ini.
+
+### 1. Membentuk Matriks Training
+
+Kumpulkan seluruh citra wajah training berukuran **m × n** piksel. Setiap citra di-*flatten* menjadi vektor kolom berukuran **N = m × n**. Gabungkan seluruh **M** citra menjadi matriks training:
+
+$$\Gamma = \{\Gamma_1, \Gamma_2, \Gamma_3, \ldots, \Gamma_M\}$$
+
+Dimana $\Gamma$ adalah matriks berukuran **N × M** yang terdiri dari **M** vektor citra.
+
+### 2. Menghitung Rata-rata Wajah (Mean Face)
+
+Hitung vektor rata-rata dari seluruh citra training berukuran **1 × N**:
+
+$$\Psi = \frac{1}{M} \sum_{i=1}^{M} \Gamma_i$$
+
+### 3. Menghitung Matriks Selisih (Difference Matrix)
+
+Kurangi setiap vektor citra training dengan vektor rata-rata untuk mendapatkan matriks selisih:
+
+$$\Phi = \Gamma - \Psi$$
+
+Dimana $\Phi_i = \Gamma_i - \Psi$ adalah vektor selisih untuk citra ke-$i$.
+
+### 4. Menghitung Matriks Kovarian
+
+Bentuk matriks kovarian dari matriks selisih:
+
+$$C = \Phi \Phi^T$$
+
+Dimana $\Phi = \{\Phi_1, \Phi_2, \Phi_3, \ldots, \Phi_M\}$.
+
+> **Catatan:** Karena matriks $C$ berukuran **N × N** (sangat besar), dalam implementasi digunakan trik **surrogate covariance** $C' = \Phi^T \Phi$ berukuran **M × M** yang jauh lebih kecil, lalu eigenvector-nya diproyeksikan kembali ke ruang asli.
+
+### 5. Menghitung Eigenvalue dan Eigenvector
+
+Selesaikan persamaan eigen dari matriks kovarian:
+
+$$C v_i = \lambda_i v_i$$
+
+Dimana:
+- $\lambda_i$ = **eigenvalue** ke-$i$
+- $v_i$ = **eigenvector** ke-$i$
+
+Dalam proyek ini, dekomposisi eigen dilakukan secara manual menggunakan algoritma **Power Iteration + Deflation** (tanpa `numpy.linalg.eig`).
+
+### 6. Menghitung Eigenface
+
+Hitung eigenface dari eigenvector yang telah diperoleh, lalu urutkan secara *descending* berdasarkan eigenvalue-nya:
+
+$$\mu_i = \sum_{k=1}^{M} v_{ik} \Phi_k$$
+
+Setiap $\mu_i$ merepresentasikan satu **eigenface** — sebuah "wajah basis" yang merupakan kombinasi linier dari seluruh selisih citra training.
+
+### 7. Menghitung Vektor Fitur (Feature Vector)
+
+Proyeksikan setiap citra training ke ruang eigenface untuk mendapatkan vektor fitur (bobot/weight):
+
+$$\omega_k = U_k^T (\Gamma - \Psi)$$
+
+Dimana $U_k$ adalah matriks eigenface terpilih (top-$k$ eigenface berdasarkan eigenvalue terbesar).
+
+### 8. Proyeksi Citra Uji
+
+Proyeksikan citra uji ke ruang eigenface dengan tahapan yang sama seperti citra training:
+
+$$\Omega_k = U^T (\Gamma_{\text{uji}} - \Psi)$$
+
+Dimana $\Gamma_{\text{uji}}$ adalah vektor citra yang akan diidentifikasi.
+
+### 9. Pencocokan — Euclidean Distance
+
+Bandingkan vektor proyeksi citra uji dengan seluruh vektor proyeksi citra training menggunakan **jarak Euclidean**:
+
+$$\varepsilon_k = \|\Omega - \Omega_k\|$$
+
+Citra training dengan jarak $\varepsilon_k$ **terkecil** dianggap sebagai hasil pencocokan. Jika $\varepsilon_k < \theta$ (threshold), maka wajah **dikenali**; jika tidak, wajah dianggap **tidak dikenal**.
+
+### Ringkasan Alur Rumus
+
+| Langkah | Operasi | Rumus |
+|:--------|:--------|:------|
+| 1 | Matriks Training | $\Gamma = \{\Gamma_1, \Gamma_2, \ldots, \Gamma_M\}$ |
+| 2 | Mean Face | $\Psi = \frac{1}{M} \sum_{i=1}^{M} \Gamma_i$ |
+| 3 | Matriks Selisih | $\Phi = \Gamma - \Psi$ |
+| 4 | Matriks Kovarian | $C = \Phi \Phi^T$ |
+| 5 | Persamaan Eigen | $C v_i = \lambda_i v_i$ |
+| 6 | Eigenface | $\mu_i = \sum_{k=1}^{M} v_{ik} \Phi_k$ |
+| 7 | Vektor Fitur | $\omega_k = U_k^T (\Gamma - \Psi)$ |
+| 8 | Proyeksi Uji | $\Omega_k = U^T (\Gamma_{\text{uji}} - \Psi)$ |
+| 9 | Euclidean Distance | $\varepsilon_k = \|\Omega - \Omega_k\|$ |
 
 ---
 

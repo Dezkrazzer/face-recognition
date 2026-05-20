@@ -2,7 +2,7 @@
   <img src="src/assets/logo_uns.png" alt="Logo UNS" width="120"/>
 </p>
 
-<h1 align="center">🧠 Face Recognition — Eigenface Method</h1>
+<h1 align="center">Face Recognition — Eigenface Method</h1>
 
 <p align="center">
   <strong>Kelompok 7 · Informatika 2025D · Universitas Sebelas Maret</strong>
@@ -40,13 +40,13 @@ Aplikasi **Face Recognition** berbasis metode **Eigenface** yang dibangun menggu
 
 ### ✨ Fitur Utama
 
-- 🔍 **Deteksi Wajah Otomatis** — Menggunakan Haar Cascade Classifier dari OpenCV untuk mendeteksi dan mengekstrak region wajah secara otomatis.
-- 🧮 **Eigenface Recognition** — Implementasi metode Eigenface dengan Power Iteration & Deflation untuk dekomposisi eigen secara manual (tanpa `numpy.linalg.eig`).
-- ⚡ **Akselerasi GPU (CUDA)** — Seluruh operasi tensor (mean face, eigenfaces, proyeksi, dan Euclidean distance) dijalankan di GPU melalui PyTorch jika tersedia.
-- 🗂️ **Model Sharding** — Model yang telah dilatih dipecah menjadi beberapa file biner (~95MB/file) agar kompatibel dengan batas ukuran file GitHub.
-- 🖥️ **GUI Modern** — Antarmuka desktop elegan dengan **CustomTkinter**, dilengkapi splash screen, navbar multi-tab, dan monitoring performa hardware secara real-time.
-- 📊 **Report Otomatis** — Setelah analisis selesai, sistem secara otomatis men-generate laporan lengkap berisi metrik performa, statistik sistem (CPU/RAM/GPU), dan timeline snapshot.
-- 👥 **Halaman Anggota Kelompok** — Menampilkan profil anggota kelompok dengan foto dan informasi akademik.
+- **Deteksi Wajah Otomatis** — Menggunakan Haar Cascade Classifier dari OpenCV untuk mendeteksi dan mengekstrak region wajah secara otomatis.
+- **Eigenface Recognition** — Implementasi metode Eigenface dengan Power Iteration & Deflation untuk dekomposisi eigen secara manual (tanpa `numpy.linalg.eig`).
+- **Akselerasi GPU (CUDA)** — Seluruh operasi tensor (mean face, eigenfaces, proyeksi, dan Euclidean distance) dijalankan di GPU melalui PyTorch jika tersedia.
+- **Model Sharding** — Model yang telah dilatih dipecah menjadi beberapa file biner (~95MB/file) agar kompatibel dengan batas ukuran file GitHub.
+- **GUI Modern** — Antarmuka desktop elegan dengan **CustomTkinter**, dilengkapi splash screen, navbar multi-tab, dan monitoring performa hardware secara real-time.
+- **Report Otomatis** — Setelah analisis selesai, sistem secara otomatis men-generate laporan lengkap berisi metrik performa, statistik sistem (CPU/RAM/GPU), dan timeline snapshot.
+- **Halaman Anggota Kelompok** — Menampilkan profil anggota kelompok dengan foto dan informasi akademik.
 
 ---
 
@@ -114,7 +114,7 @@ face-recognition/
 3. **Proyeksi Eigenspace** — Gambar di-flatten menjadi vektor, dikurangi mean face, lalu diproyeksikan ke ruang eigen menggunakan eigenfaces dari model.
 4. **Pencocokan** — Jarak Euclidean antara vektor proyeksi gambar input dan seluruh vektor training dihitung. Jika jarak minimum lebih kecil dari threshold, wajah dianggap cocok.
 
-### Pelatihan Model
+### Pelatihan Dataset
 
 Proses training menggunakan script `src/utils/train.py`:
 
@@ -191,9 +191,8 @@ python main.py
 
 ## 📘 Panduan Penggunaan
 
-### Dashboard Analisis
-
 1. **Pilih Gambar Target** — Klik tombol **"Choose File"** pada sidebar untuk memilih gambar wajah yang ingin diidentifikasi.
+   - **Note** — Jika ingin menganalisis foto yang sama seperti dataset, dapat pilih gambar melalui folder `src/test` (karena pada folder `src/test` berisi foto wajah yang digunakan untuk dataset).
 2. **Atur Parameter** *(opsional)* :
    - **Tolerance Threshold** — Batas maksimum jarak Euclidean agar dianggap cocok (default: `3000.0`). Semakin kecil nilainya, semakin ketat pencocokan.
    - **Eigen Components** — Jumlah komponen eigen yang digunakan saat training (default: `50`).
@@ -204,7 +203,7 @@ python main.py
    - Menampilkan hasil pencocokan beserta persentase kecocokan.
 4. **Lihat Report** — Setelah analisis selesai, sistem otomatis berpindah ke tab **Analysis Report** yang menampilkan laporan detail.
 
-### Melatih Model Baru (CLI)
+### Melatih Dataset Baru (CLI)
 
 Jika ingin melatih model dengan dataset sendiri:
 
@@ -232,13 +231,13 @@ Model akan otomatis disimpan sebagai file sharded di `src/dataset/`.
 
 ## 🖼️ Tampilan Antarmuka
 
-Aplikasi memiliki **3 halaman utama** yang dapat diakses melalui navigasi atas:
+Aplikasi memiliki **3 halaman utama** yang dapat diakses melalui navbar:
 
 | Tab                     | Deskripsi                                                                 |
 |:------------------------|:--------------------------------------------------------------------------|
-| 🔬 **Analysis Dashboard** | Dashboard utama untuk memuat gambar, mengatur parameter, dan menjalankan analisis pengenalan wajah. |
-| 📊 **Analysis Report**    | Laporan lengkap hasil analisis terakhir, termasuk metrik performa, jarak Euclidean, confidence, serta statistik penggunaan hardware. |
-| 👥 **Anggota Kelompok**   | Profil anggota kelompok dengan foto dan informasi akademik.               |
+| **Analysis Dashboard** | Dashboard utama untuk memuat gambar, mengatur parameter, dan menjalankan analisis pengenalan wajah. |
+| **Analysis Report**    | Laporan lengkap hasil analisis terakhir, termasuk metrik performa, jarak Euclidean, confidence, serta statistik penggunaan hardware. |
+| **Anggota Kelompok**   | Profil anggota kelompok dengan foto dan informasi akademik.               |
 
 ---
 
@@ -372,7 +371,7 @@ Sidebar dashboard menampilkan statistik hardware secara live (diperbarui setiap 
 
 ## 📂 Dataset
 
-Proyek ini menggunakan dataset yang terdiri dari **105 individu** (selebriti & tokoh publik), dengan masing-masing individu memiliki beberapa gambar wajah. Dataset disimpan di `src/test/` dan digunakan untuk validasi serta pengujian akurasi.
+Proyek ini menggunakan dataset yang terdiri dari **105 individu** (selebriti & tokoh publik), dengan masing-masing individu memiliki beberapa gambar wajah. Dataset disimpan di `src/dataset/` dan digunakan untuk validasi serta pengujian akurasi.
 
 ---
 

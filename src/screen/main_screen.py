@@ -341,96 +341,101 @@ class FaceRecognitionApp(ctk.CTk):
             stop_event.wait(0.5)
 
     def run_recognition(self):
-        start_time = time.time()
+            start_time = time.time()
         
-        # Mulai monitoring sistem
-        system_snapshots = []
-        stop_monitor = threading.Event()
-        monitor_thread = threading.Thread(
-            target=self._monitor_system, args=(system_snapshots, stop_monitor), daemon=True
-        )
-        monitor_thread.start()
+            # Mulai monitoring sistem
+            system_snapshots = []
+            stop_monitor = threading.Event()
+            monitor_thread = threading.Thread(
+                target=self._monitor_system, args=(system_snapshots, stop_monitor), daemon=True
+            )
+            monitor_thread.start()
         
-        try:
-            THRESHOLD = float(self.entry_threshold.get())
-        except ValueError:
-            print("⚠️ Input Threshold tidak valid! Menggunakan default: 3000.0")
-            THRESHOLD = 3000.0
-            
-        try:
-            NUM_COMPONENTS = int(self.entry_components.get())
-        except ValueError:
-            print("⚠️ Input Komponen Eigen tidak valid! Menggunakan default: 50")
-            NUM_COMPONENTS = 50
-            
-        print("=== MEMULAI ANALISIS RUANG VEKTOR EIGEN ===")
-        print(f"Ambang Toleransi (Threshold): {THRESHOLD}")
-        print(f"Maks Komponen Eigen         : {NUM_COMPONENTS}\n")
-
-        model_from_cache = self.recognizer.is_loaded
-
-        # 1. LOAD ATAU BUILD PORTABLE MODEL
-# 1. LOAD PORTABLE MODEL (VERSI SHARDING)
-        if not self.recognizer.is_loaded:
-            self.progress_bar.set(0.5)
             try:
-                self.recognizer.load_model()
-            except Exception as e:
-                print(f"ERROR: {e}")
-                self.after(0, self.show_error, "Model tidak ditemukan! Jalankan 'python build_model.py' di terminal terlebih dahulu.")
-                return
-        else:
-            print("[INFO] Model Portable sudah tersimpan di VRAM. Eksekusi instan.")
-        
-        # 2. INFERENCE
-        closest_img_rgb, label, min_dist, msg = self.recognizer.recognize(self.test_image_path, THRESHOLD)
-        
-        self.progress_bar.set(1.0)
-        print("-" * 45)
-        if min_dist != float('inf'):
-            print(f"📐 JARAK EUCLIDEAN TERKECIL : {min_dist:.2f}")
-        print("-" * 45)
+                THRESHOLD = float(self.entry_threshold.get())
+            except ValueError:
+                print("⚠️ Input Threshold tidak valid! Menggunakan default: 3000.0")
+                THRESHOLD = 3000.0
+            
+            try:
+                NUM_COMPONENTS = int(self.entry_components.get())
+            except ValueError:
+                print("⚠️ Input Komponen Eigen tidak valid! Menggunakan default: 50")
+                NUM_COMPONENTS = 50
+            
+            print("=== MEMULAI ANALISIS RUANG VEKTOR EIGEN ===")
+            print(f"Ambang Toleransi (Threshold): {THRESHOLD}")
+            print(f"Maks Komponen Eigen         : {NUM_COMPONENTS}\n")
 
-        end_time = time.time()
-        exec_time = end_time - start_time
+            model_from_cache = self.recognizer.is_loaded
+
+            # 1. LOAD PORTABLE SHARDED MODEL
+            if not self.recognizer.is_loaded:
+                # --- PERBAIKAN 1: Update UI Progress Bar secara aman melalui self.after ---
+                self.after(0, self.progress_bar.set, 0.5)
+            
+                # --- PERBAIKAN 2: Beri jeda 0.1 detik agar OS merender UI sebelum CPU dimonopoli ---
+                time.sleep(0.1)
+            
+                try:
+                    self.recognizer.load_model()
+                except Exception as e:
+                    print(f"ERROR: {e}")
+                    self.after(0, self.show_error, "Model tidak ditemukan! Jalankan 'python build_model.py' di terminal terlebih dahulu.")
+                    return
+            else:
+                print("[INFO] Model Portable sudah tersimpan di VRAM. Eksekusi instan.")
         
-        # Hentikan monitoring dan ambil snapshot terakhir
-        stop_monitor.set()
-        system_snapshots.append(self._collect_system_snapshot())
+            # 2. INFERENCE
+            closest_img_rgb, label, min_dist, msg = self.recognizer.recognize(self.test_image_path, THRESHOLD)
         
-        # Hitung info dataset
-        dataset_total_images = len(self.recognizer.dataset_labels) if self.recognizer.is_loaded else 0
-        dataset_total_classes = len(set(self.recognizer.dataset_labels)) if self.recognizer.is_loaded else 0
+            # --- PERBAIKAN 3: Update UI Progress Bar akhir secara aman ---
+            self.after(0, self.progress_bar.set, 1.0)
         
-        # Hitung match percentage
-        match_pct = None
-        if msg == "Cocok":
-            match_pct = max(0.0, 100.0 * (1 - (min_dist / THRESHOLD)))
+            print("-" * 45)
+            if min_dist != float('inf'):
+                print(f"📐 JARAK EUCLIDEAN TERKECIL : {min_dist:.2f}")
+            print("-" * 45)
+
+            end_time = time.time()
+            exec_time = end_time - start_time
         
-        # Tentukan device
-        import torch
-        device_name = "CUDA" if torch.cuda.is_available() else "CPU"
+            # Hentikan monitoring dan ambil snapshot terakhir
+            stop_monitor.set()
+            system_snapshots.append(self._collect_system_snapshot())
         
-        # Kumpulkan report data
-        report_data = {
-            "timestamp": datetime.now().strftime("%d %B %Y, %H:%M:%S"),
-            "threshold": THRESHOLD,
-            "num_components": NUM_COMPONENTS,
-            "execution_time": exec_time,
-            "result_label": label,
-            "result_status": msg,
-            "min_distance": min_dist,
-            "match_percentage": match_pct,
-            "test_image_path": self.test_image_path,
-            "dataset_folder": self.dataset_folder,
-            "dataset_total_images": dataset_total_images,
-            "dataset_total_classes": dataset_total_classes,
-            "model_loaded_from_cache": model_from_cache,
-            "device": device_name,
-            "system_snapshots": system_snapshots,
-        }
+            # Hitung info dataset
+            dataset_total_images = len(self.recognizer.dataset_labels) if self.recognizer.is_loaded else 0
+            dataset_total_classes = len(set(self.recognizer.dataset_labels)) if self.recognizer.is_loaded else 0
         
-        self.after(0, self.show_final_result, min_dist, THRESHOLD, closest_img_rgb, label, msg, exec_time, report_data)
+            # Hitung match percentage
+            match_pct = None
+            if msg == "Cocok":
+                match_pct = max(0.0, 100.0 * (1 - (min_dist / THRESHOLD)))
+        
+            # Tentukan device
+            import torch
+            device_name = "CUDA" if torch.cuda.is_available() else "CPU"
+        
+            # Kumpulkan report data
+            report_data = {
+                "timestamp": datetime.now().strftime("%d %B %Y, %H:%M:%S"),
+                "threshold": THRESHOLD,
+                "num_components": NUM_COMPONENTS,
+                "execution_time": exec_time,
+                "result_label": label,
+                "result_status": msg,
+                "min_distance": min_dist,
+                "match_percentage": match_pct,
+                "test_image_path": self.test_image_path,
+                "dataset_folder": self.dataset_folder,
+                "dataset_total_images": dataset_total_images,
+                "dataset_total_classes": dataset_total_classes,
+                "model_loaded_from_cache": model_from_cache,
+                "device": device_name,
+                "system_snapshots": system_snapshots,
+            }
+            self.after(0, self.show_final_result, min_dist, THRESHOLD, closest_img_rgb, label, msg, exec_time, report_data)
 
     def show_final_result(self, min_dist, threshold, closest_img_rgb, label, msg, exec_time, report_data=None):
         self.lbl_time.configure(text=f"Execution Time: {exec_time:.2f}s")

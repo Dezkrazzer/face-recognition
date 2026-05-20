@@ -1,3 +1,4 @@
+# main.py
 import io
 import os
 import cv2
@@ -9,8 +10,14 @@ IMG_SIZE = (50, 50)
 UI_IMAGE_SIZE = (150, 150)
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 
-CASCADE_PATH = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-face_cascade = cv2.CascadeClassifier(CASCADE_PATH)
+# ==========================================
+# CASCADE STACKING (FRONTAL + PROFILE)
+# ==========================================
+CASCADE_FRONTAL = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+CASCADE_PROFILE = cv2.data.haarcascades + 'haarcascade_profileface.xml'
+
+face_cascade_frontal = cv2.CascadeClassifier(CASCADE_FRONTAL)
+face_cascade_profile = cv2.CascadeClassifier(CASCADE_PROFILE)
 
 torch.set_float32_matmul_precision('medium') 
 DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -28,8 +35,6 @@ class FaceRecognizer:
     def load_model(self):
         """Membaca dan merakit kembali seluruh pecahan file biner dari folder src/dataset/"""
         model_dir = os.path.join(CURRENT_DIR, "src", "dataset")
-        
-        # Cari dan urutkan seluruh pecahan berkas berdasarkan indeks penamaan
         files = sorted([os.path.join(model_dir, f) for f in os.listdir(model_dir) if f.startswith("Eigen_Weight_")])
     
         if not files:
@@ -42,11 +47,9 @@ class FaceRecognizer:
             with open(f, 'rb') as file:
                 full_data += file.read()
             
-        # Konstruksi kembali objek dictionary melalui memory stream buffer
         buffer = io.BytesIO(full_data)
         checkpoint = torch.load(buffer, map_location=DEVICE, weights_only=False)
     
-        # Muat variabel data langsung ke target VRAM / CPU device
         self.mean_face = checkpoint['mean_face'].to(DEVICE)
         self.eigenfaces = checkpoint['eigenfaces'].to(DEVICE)
         self.projected_training_faces = checkpoint['projected_training_faces'].to(DEVICE)
@@ -60,7 +63,19 @@ class FaceRecognizer:
         if img is None: return None, None, float('inf'), "Gambar gagal dibaca."
         
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+        
+        # LOGIKA CASCADE STACKING INFERENCE
+        faces = face_cascade_frontal.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+        
+        if len(faces) == 0:
+            faces = face_cascade_profile.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+            if len(faces) == 0:
+                gray_flipped = cv2.flip(gray, 1)
+                faces_flipped = face_cascade_profile.detectMultiScale(gray_flipped, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+                if len(faces_flipped) > 0:
+                    faces = []
+                    for (x, y, w, h) in faces_flipped:
+                        faces.append((gray.shape[1] - x - w, y, w, h))
         
         if len(faces) > 0:
             faces = sorted(faces, key=lambda x: x[2]*x[3], reverse=True)

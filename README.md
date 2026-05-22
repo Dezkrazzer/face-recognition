@@ -389,7 +389,7 @@ Proyek ini dilisensikan di bawah **Apache License 2.0**. Lihat file [LICENSE](LI
 |:--:|:-----|:----|:------|
 | 1 | **Lazuardi Akbar Imani** | L0125105 | Informatika D |
 | 2 | **Muhammad Haidar Ramzy** | L0125109 | Informatika D |
-| 3 | **Egifrid Angelo Mwoleka** | L0125XXX | Informatika D |
+| 3 | **Egifrid Angelo Mwoleka** | L0125096 | Informatika D |
 
 </div>
 

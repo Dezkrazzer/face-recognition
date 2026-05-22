@@ -42,7 +42,7 @@ class GroupScreen(ctk.CTkFrame):
             {
                 "name": "Egifrid Angelo Mwoleka",
                 "kelas": "Informatika D",
-                "nim": "L0125XXX",
+                "nim": "L0125096",
                 "color": "#3b82f6", # Biru
                 "emoji": "📝",
                 "photo": "foto_member_3"
